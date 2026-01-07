@@ -1,0 +1,1 @@
+ .\.venv\Scripts\mcpo.exe -- .\.venv\Scripts\python.exe .\src\main.py --transport stdio

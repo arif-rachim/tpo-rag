@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.env
+
+# Virtual environments
+.venv
+config/*.json
+/.idea
+stnc-transformers/
+venv
+chroma_store
+/paraphrase-multilingual-mpnet-base-v2/
+/models/
+/chroma_store_bak/
+/docs_ori/
+/docs/
+/mcp_tool_calls.log
+/logs/
+/data/

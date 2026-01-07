@@ -1,0 +1,6 @@
+List every document that has been indexed in the JAC safety‑regulation knowledge base.
+Generate a tabular listing of every document indexed in the knowledge base. The table should contain three columns:
+
+Filename – the name of the document file.
+Total Pages – the number of pages in the document.
+Creation Date – the date the document was created.

@@ -1,0 +1,14 @@
+# 1. Base image
+FROM 156.1.161.56:8082/python:3.12-windowsservercore-ltsc2022
+
+# 2. Set working directory inside container
+WORKDIR /app
+
+COPY VC_redist.x64.exe .
+
+# 3. copy files from host to container
+COPY models /models
+
+RUN c:/app/VC_redist.x64.exe /install /quiet /norestart
+# 4.
+CMD ["cmd"]

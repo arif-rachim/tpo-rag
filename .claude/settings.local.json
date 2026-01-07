@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv pip install:*)",
+      "Bash(start-server.bat)",
+      "Bash(cmd /c start-server.bat)",
+      "Bash(.venvScriptspython.exe .srcmain.py)",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe .\\\\src\\\\main.py\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag && .venv\\\\Scripts\\\\python.exe .\\\\src\\\\main.py\")",
+      "Bash(dir:*)",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag && .venv\\\\Scripts\\\\python.exe .\\\\src\\\\main.py 2>&1\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag && .venv\\\\Scripts\\\\python.exe -u .\\\\src\\\\main.py\")",
+      "Bash(timeout:*)",
+      "Bash(.venvScriptspython.exe -c \"import sys; sys.path.insert\\(0, ''src''\\); from retriever import retrieve; print\\(''Import successful''\\); retrieve.main\\(\\)\")",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe -c \"\"import sys; sys.path.insert\\(0, ''src''\\); from retriever import retrieve; print\\(''Import successful''\\)\"\"\")",
+      "Bash(cmd /c \"if exist data\\\\tpo\\\\documents \\(echo Documents dir exists\\) else \\(echo Documents dir MISSING\\)\")",
+      "Bash(cmd /c \"if exist data\\\\tpo\\\\chroma-store \\(echo Chroma-store exists\\) else \\(echo Chroma-store MISSING\\)\")",
+      "Bash(powershell -Command \"& { .\\\\.venv\\\\Scripts\\\\python.exe .\\\\src\\\\main.py 2>&1 | Select-Object -First 50 }\")",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(start /B cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\main.py > server_output.log 2>&1\")",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\main.py > server_output.log 2>&1\")",
+      "Bash(ping:*)",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe -c \"\"import sys; print\\(''Python version:'', sys.version\\); print\\(''Path:'', sys.executable\\)\"\"\")",
+      "Bash(ls:*)",
+      "Bash(powershell -Command \"$env:PYTHONPATH=''src''; .\\\\.venv\\\\Scripts\\\\python.exe -c ''import config; print\\(\"\"Config loaded successfully\"\"\\); print\\(\"\"Port:\"\", config.MCP_SERVER_PORT\\)''\")",
+      "Bash(powershell -Command \"$env:PYTHONPATH=''src''; & ''.\\\\.venv\\\\Scripts\\\\python.exe'' -c ''import config; print\\(\"\"\"\"Config loaded\"\"\"\"\\); print\\(\"\"\"\"Port:\"\"\"\", config.MCP_SERVER_PORT\\)''\")",
+      "Bash(../.venv/Scripts/python.exe -c \"import config; print\\(''Config loaded''\\); print\\(''Port:'', config.MCP_SERVER_PORT\\)\")",
+      "Bash(../.venv/Scripts/python.exe:*)",
+      "Bash(cmd /c \"for /d /r src %d in \\(__pycache__\\) do @if exist %d rmdir /s /q %d\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path src -Include __pycache__ -Recurse -Force | Remove-Item -Recurse -Force; Write-Host ''Python cache cleared''\")"
+    ]
+  }
+}
