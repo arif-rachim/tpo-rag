@@ -28,7 +28,28 @@
       "Bash(../.venv/Scripts/python.exe -c \"import config; print\\(''Config loaded''\\); print\\(''Port:'', config.MCP_SERVER_PORT\\)\")",
       "Bash(../.venv/Scripts/python.exe:*)",
       "Bash(cmd /c \"for /d /r src %d in \\(__pycache__\\) do @if exist %d rmdir /s /q %d\")",
-      "Bash(powershell -Command \"Get-ChildItem -Path src -Include __pycache__ -Recurse -Force | Remove-Item -Recurse -Force; Write-Host ''Python cache cleared''\")"
+      "Bash(powershell -Command \"Get-ChildItem -Path src -Include __pycache__ -Recurse -Force | Remove-Item -Recurse -Force; Write-Host ''Python cache cleared''\")",
+      "Bash(.venvScriptspython.exe srcauth.py)",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\auth.py\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag && .venv\\\\Scripts\\\\python.exe src\\\\auth.py\")",
+      "Bash(powershell -Command \"& { .\\\\.venv\\\\Scripts\\\\python.exe .\\\\src\\\\auth.py 2>&1 }\")",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init -p)",
+      "Bash(npm run build:*)",
+      "Bash(.venvScriptspython.exe srcmain.py)",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\main.py\")",
+      "Bash(python src/main.py:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(cmd /c \"tasklist | findstr python\")",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\main.py 2>&1\")",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\python.exe src\\\\ingestor\\\\ingest.py 2>&1 | Select-Object -First 50\")",
+      "Bash(del \"C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag\\\\logs\\\\ingestion.log\")",
+      "Bash(cmd /c \"del C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag\\\\logs\\\\ingestion.log\")"
     ]
   }
 }

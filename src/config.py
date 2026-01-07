@@ -11,6 +11,21 @@ MCP_SERVER_PORT = int(os.getenv("MCP_SERVER_PORT") or "3222") # The MCP Server p
 MCP_SERVER_NAME = os.getenv("MCP_SERVER_NAME")  # The server name in FastMCP
 VECTOR_DB_COLLECTION_NAME = os.getenv("VECTOR_DB_COLLECTION_NAME")  # The collection name that will be used when storing in ChromaDB
 
+# Authentication configuration (stdlib-only, no JWT/bcrypt)
+DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+DEFAULT_ADMIN_PASSWORD_HASH = os.getenv(
+    "DEFAULT_ADMIN_PASSWORD_HASH",
+    "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"  # sha256("admin")
+)
+SESSION_TIMEOUT_HOURS = int(os.getenv("SESSION_TIMEOUT_HOURS", "8"))
+
+# File upload configuration
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
+ALLOWED_FILE_TYPES = os.getenv("ALLOWED_FILE_TYPES", ".pdf,.docx,.pptx,.xlsx,.xls").split(",")
+
+# CORS configuration
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+
 PORTAL_URL = os.getenv("PORTAL_URL")  # The address of portal server
 PORTAL_LDAP_USER = os.getenv("PORTAL_LDAP_USER")  # The user name of jac portal
 PORTAL_LDAP_PASSWORD = os.getenv("PORTAL_LDAP_PASSWORD")  # The password for the JAC PORTAL
