@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "sync-env": "node ../scripts/sync-env.js",
+    "predev": "npm run sync-env",
+    "prebuild": "npm run sync-env",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

@@ -7,6 +7,9 @@ wheels/
 *.egg-info
 *.env
 
+# Auto-generated frontend env (created by sync-env script)
+frontend/.env
+
 # Virtual environments
 .venv
 config/*.json
