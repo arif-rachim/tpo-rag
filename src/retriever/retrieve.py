@@ -108,14 +108,45 @@ _mcp_app: "StarletteWithLifespan | None" = None
 # ─────────────────────────────────────────────────────────────────────────────
 #   Helper / lifecycle utilities
 # ─────────────────────────────────────────────────────────────────────────────
-def _load_resources() -> Tuple[
+def _invalidate_cache(clear_collection=True, clear_bm25=True):
+    """
+    Invalidate cached resources that may become stale after ingestion.
+
+    Parameters
+    ----------
+    clear_collection : bool
+        Whether to clear the cached ChromaDB collection
+    clear_bm25 : bool
+        Whether to clear the cached BM25 index
+    """
+    global _collection, _bm25
+
+    if clear_collection and _collection is not None:
+        _logger.info("Invalidating cached ChromaDB collection")
+        _collection = None
+
+    if clear_bm25 and _bm25 is not None:
+        _logger.info("Invalidating cached BM25 index")
+        _bm25 = None
+
+
+def _load_resources(force_reload_collection=False, force_reload_bm25=False) -> Tuple[
     SentenceTransformer,
     chromadb.PersistentClient,
     chromadb.Collection,
     Dict[str, Any],
     CrossEncoder,
 ]:
-    """Initialise everything that is required for a search request."""
+    """
+    Initialise everything that is required for a search request.
+
+    Parameters
+    ----------
+    force_reload_collection : bool
+        Force reload of the ChromaDB collection even if cached
+    force_reload_bm25 : bool
+        Force reload of the BM25 index even if cached
+    """
     global _model, _client, _collection, _bm25, _reranker
 
     try:
@@ -138,14 +169,18 @@ def _load_resources() -> Tuple[
                 _client = chromadb.PersistentClient(path=str(VECTOR_DB))
             _logger.info("ChromaDB client opened successfully")
 
-        if _collection is None:
+        if _collection is None or force_reload_collection:
+            if force_reload_collection and _collection is not None:
+                _logger.info("Force reloading ChromaDB collection due to staleness")
             _logger.info(f"Fetching collection: {config.VECTOR_DB_COLLECTION_NAME}")
             with PerformanceLogger(_logger, f"Fetching collection {config.VECTOR_DB_COLLECTION_NAME}"):
                 _collection = _client.get_collection(config.VECTOR_DB_COLLECTION_NAME)
             collection_count = _collection.count()
             _logger.info(f"Collection loaded successfully with {collection_count} items")
 
-        if _bm25 is None:
+        if _bm25 is None or force_reload_bm25:
+            if force_reload_bm25 and _bm25 is not None:
+                _logger.info("Force reloading BM25 index due to staleness")
             _logger.info("Loading BM25 index...")
             _logger.debug(f"BM25 index path: {BM25_IDX}")
             with PerformanceLogger(_logger, "Loading BM25 index"):
@@ -405,11 +440,25 @@ def search(query: str, top_k: int = 10) -> List[SearchResult]:
     _logger.info(f"Requested results: {top_k}")
     _logger.info("=" * 80)
 
+    try:
+        return _search_with_retry(query, top_k)
+    except chromadb.errors.NotFoundError as nf_exc:
+        # Collection was deleted and recreated - invalidate cache and retry once
+        _logger.warning(f"Collection not found (stale cache) - reloading and retrying search: {nf_exc}")
+        _invalidate_cache(clear_collection=True, clear_bm25=True)
+        return _search_with_retry(query, top_k, force_reload=True)
+
+
+def _search_with_retry(query: str, top_k: int, force_reload: bool = False) -> List[SearchResult]:
+    """Internal search implementation with optional force reload."""
     with PerformanceLogger(_logger, "Complete search operation"):
         # Load all required resources
         with PerformanceLogger(_logger, "Loading search resources"):
             _logger.debug("Loading search resources...")
-            model, _, collection, bm25, reranker = _load_resources()
+            model, _, collection, bm25, reranker = _load_resources(
+                force_reload_collection=force_reload,
+                force_reload_bm25=force_reload
+            )
 
         results: List[SearchResult] = []
 
@@ -566,7 +615,15 @@ def _list_documents_internal() -> ListDocumentsResults:
 
         # Get all data from collection
         _logger.debug("Fetching all documents from collection...")
-        data = collection.get()
+        try:
+            data = collection.get()
+        except chromadb.errors.NotFoundError as nf_exc:
+            # Collection was deleted and recreated (e.g., during ingestion)
+            # Invalidate cache and retry with fresh collection
+            _logger.warning(f"Collection not found (stale cache) - reloading: {nf_exc}")
+            _invalidate_cache(clear_collection=True, clear_bm25=True)
+            _, _, collection, _, _ = _load_resources(force_reload_collection=True, force_reload_bm25=True)
+            data = collection.get()
 
         if not data or not data["metadatas"]:
             _logger.warning("Collection is empty - no documents to list")
@@ -598,6 +655,7 @@ def _list_documents_internal() -> ListDocumentsResults:
                     "lang": meta.get("lang", "unknown"),
                     "created_at": meta.get("created_at"),
                     "modified_at": meta.get("modified_at"),
+                    "file_size": meta.get("file_size"),
                 }
             # collect sheet titles and file type during first pass
             if st := meta.get("sheet_title"):
@@ -616,6 +674,7 @@ def _list_documents_internal() -> ListDocumentsResults:
                 "language": d["meta"]["lang"],
                 "created_at": d["meta"].get("created_at"),
                 "modified_at": d["meta"].get("modified_at"),
+                "file_size": d["meta"].get("file_size"),
                 # optional sheet info (only present for Excel files)
                 "sheet_titles": sorted(d["sheet_titles"]),
                 # expose the file type if you want to show it in a UI

@@ -19,6 +19,9 @@ from typing import Optional, Dict, Any
 import sys
 import logging
 
+# Import log file path for clearing
+from logging_config import INGESTION_LOG_FILE
+
 # Get logger
 _logger = logging.getLogger("ingestion_manager")
 
@@ -142,6 +145,17 @@ def start_ingestion() -> Dict[str, Any]:
         _end_time = None
         _error_message = None
         _file_operations_locked = True
+
+        # Clear ingestion log file to show only new logs
+        try:
+            if INGESTION_LOG_FILE.exists():
+                INGESTION_LOG_FILE.unlink()
+                _logger.info(f"Cleared ingestion log file: {INGESTION_LOG_FILE}")
+            else:
+                _logger.debug(f"Ingestion log file does not exist yet: {INGESTION_LOG_FILE}")
+        except Exception as log_exc:
+            _logger.warning(f"Could not clear ingestion log file: {log_exc}")
+            # Continue anyway - this is not a critical error
 
         try:
             # Get Python executable and project root
@@ -273,23 +287,28 @@ def check_process_status():
         # Check if process has finished
         returncode = _process.poll()
         if returncode is not None:
-            # Process finished
+            # Process finished - clean it up properly
+            _logger.info(f"Ingestion process finished with return code: {returncode}")
+
+            # Ensure process is fully reaped (important on Windows)
+            try:
+                _process.wait(timeout=1)
+            except Exception as wait_exc:
+                _logger.warning(f"Error waiting for process cleanup: {wait_exc}")
+
             _end_time = datetime.now()
             _file_operations_locked = False
 
             if returncode == 0:
                 _status = "completed"
+                _logger.info("Ingestion completed successfully - status updated to 'completed'")
             else:
                 _status = "error"
-                # Try to read stderr for error message
-                try:
-                    _, stderr = _process.communicate(timeout=1)
-                    if stderr:
-                        _error_message = stderr[:500]  # Limit error message length
-                except:
-                    _error_message = f"Process exited with code {returncode}"
+                _error_message = f"Process exited with code {returncode}"
+                _logger.error(f"Ingestion failed: {_error_message}")
 
             _process = None
+            _logger.debug("Ingestion process cleaned up and status updated")
 
 
 # --------------------------------------------------------------------------- #

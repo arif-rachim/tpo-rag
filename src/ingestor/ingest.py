@@ -422,6 +422,7 @@ def extract_and_chunk_file(
         filename = file_path.name
         created_iso = fs_timestamp_to_iso(os.path.getctime(file_path))
         modified_iso = fs_timestamp_to_iso(os.path.getmtime(file_path))
+        file_size = file_path.stat().st_size  # Get file size in bytes
 
         # --------------------------------------------------------------- #
         #  1️⃣  Extract raw pages (text + optional tables/formulas)
@@ -449,6 +450,7 @@ def extract_and_chunk_file(
                     "lang": page.get("lang", "unknown"),
                     "created_at": created_iso,
                     "modified_at": modified_iso,
+                    "file_size": file_size,
                     "file_type": file_path.suffix.lower().lstrip("."),
                     **{k: page[k] for k in ("sheet_title", "total_cells") if k in page}
                 }
@@ -521,6 +523,28 @@ def main() -> None:
         with PerformanceLogger(logger, "Initializing ChromaDB"):
             client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
         logger.info("ChromaDB client initialized")
+
+        # Clear existing collection and BM25 index to sync with filesystem
+        # This ensures deleted files are removed from the database
+        logger.info("Clearing existing ChromaDB collection to sync with filesystem...")
+        try:
+            client.delete_collection(name=COLLECTION_NAME)
+            logger.info(f"Successfully deleted old collection: {COLLECTION_NAME}")
+        except Exception as e:
+            logger.info(f"No existing collection to delete (this is normal for first run): {e}")
+
+        # Clear BM25 index file
+        logger.info("Clearing existing BM25 index...")
+        try:
+            if BM25_INDEX_PATH.exists():
+                BM25_INDEX_PATH.unlink()
+                logger.info(f"Successfully deleted old BM25 index: {BM25_INDEX_PATH}")
+            else:
+                logger.info("No existing BM25 index to delete (this is normal for first run)")
+        except Exception as e:
+            logger.warning(f"Could not delete BM25 index: {e}")
+
+        logger.info("ChromaDB and BM25 index are now synced with filesystem - ready for fresh ingestion")
 
         logger.info("Loading NER model...")
         with PerformanceLogger(logger, "Loading NER model"):

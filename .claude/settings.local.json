@@ -52,7 +52,16 @@
       "Bash(cmd /c \"del C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag\\\\logs\\\\ingestion.log\")",
       "Bash(cat:*)",
       "Bash(grep:*)",
-      "Bash(npm run sync-env:*)"
+      "Bash(npm run sync-env:*)",
+      "Bash(Select-Object -First 50)",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\arif\\\\PycharmProjects\\\\tpo-rag && .venv\\\\Scripts\\\\python.exe src\\\\main.py 2>&1\")",
+      "Bash(cmd /c \"del test_import.py test_log_clearing.py\")",
+      "Bash(cmd /c \"type logs\\\\ingestion.log | findstr /C:\"Document Ingestion Complete\"\")",
+      "Bash(cmd /c \"tasklist /FI \"IMAGENAME eq python.exe\" /FO LIST | findstr PID\")",
+      "Bash(del test_sync.py)",
+      "Bash(cmd /c \"del test_sync.py\")",
+      "Bash(cmd /c \"del test_stale_collection_fix.py\")",
+      "Bash(cmd /c \"del test_metadata_fix.py\")"
     ]
   }
 }
