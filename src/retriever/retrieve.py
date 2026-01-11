@@ -1276,7 +1276,9 @@ async def upload_document_endpoint(request):
 
     Protected endpoint (requires authentication).
 
-    Expects multipart/form-data with a 'file' field.
+    Expects multipart/form-data with:
+        - 'file' field (required)
+        - 'folder' field (optional - target folder path)
 
     Returns: {
         "success": bool,
@@ -1294,6 +1296,7 @@ async def upload_document_endpoint(request):
         # Parse multipart form data
         form = await request.form()
         file: UploadFile = form.get("file")
+        folder = form.get("folder", "").strip()
 
         if not file:
             _logger.warning("No file provided in upload request")
@@ -1304,6 +1307,8 @@ async def upload_document_endpoint(request):
 
         filename = file.filename
         _logger.info(f"Uploading file: {filename}")
+        if folder:
+            _logger.info(f"Target folder: {folder}")
 
         # Validate file extension
         file_ext = Path(filename).suffix.lower()
@@ -1314,15 +1319,31 @@ async def upload_document_endpoint(request):
                 "message": f"File type {file_ext} not allowed. Allowed types: {', '.join(config.ALLOWED_FILE_TYPES)}"
             }, status_code=400)
 
-        # Create target path
-        target_path = DOCS_ROOT / filename
+        # Determine target path
+        if folder:
+            # Validate folder path safety
+            folder_path = DOCS_ROOT / folder
+            safety_check = _validate_path_safety(folder_path, "upload to folder")
+            if safety_check:
+                return safety_check
+
+            # Create folder if it doesn't exist
+            folder_path.mkdir(parents=True, exist_ok=True)
+
+            # Save file to folder
+            target_path = folder_path / filename
+            full_filename = f"{folder}/{filename}"
+        else:
+            # Save to root
+            target_path = DOCS_ROOT / filename
+            full_filename = filename
 
         # Check if file already exists
         if target_path.exists():
-            _logger.warning(f"File already exists: {filename}")
+            _logger.warning(f"File already exists: {full_filename}")
             return JSONResponse({
                 "success": False,
-                "message": f"File '{filename}' already exists. Please delete it first or rename your file."
+                "message": f"File '{full_filename}' already exists. Please delete it first or rename your file."
             }, status_code=409)
 
         # Read file content and check size
@@ -1350,12 +1371,12 @@ async def upload_document_endpoint(request):
         with open(target_path, "wb") as f:
             f.write(file_content)
 
-        _logger.info(f"File uploaded successfully: {filename} ({file_size} bytes)")
+        _logger.info(f"File uploaded successfully: {full_filename} ({file_size} bytes)")
         return JSONResponse({
             "success": True,
-            "filename": filename,
+            "filename": full_filename,
             "size": file_size,
-            "message": f"File '{filename}' uploaded successfully. Run ingestion to index it."
+            "message": f"File '{full_filename}' uploaded successfully. Run ingestion to index it."
         })
 
     except Exception as exc:
@@ -1427,6 +1448,274 @@ async def delete_document_endpoint(request):
         return JSONResponse({
             "success": False,
             "message": "File deletion failed",
+            "error": str(exc)
+        }, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#   Folder Management Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@require_auth
+async def create_folder_endpoint(request):
+    """
+    POST /api/folders - Create a new folder.
+
+    Protected endpoint (requires authentication).
+
+    Request body: {
+        "path": str (relative path like "legal/contracts/2024")
+    }
+
+    Returns: {
+        "success": bool,
+        "path": str (if success),
+        "message": str
+    }
+    """
+    try:
+        data = await request.json()
+        folder_path = data.get("path", "").strip()
+
+        if not folder_path:
+            return JSONResponse({
+                "success": False,
+                "message": "Folder path required"
+            }, status_code=400)
+
+        _logger.info(f"Create folder request from user: {request.state.username}")
+        _logger.info(f"Creating folder: {folder_path}")
+
+        # Validate path safety
+        target_path = DOCS_ROOT / folder_path
+        safety_check = _validate_path_safety(target_path, "create folder")
+        if safety_check:
+            return safety_check
+
+        # Check if ingestion is running
+        if ingestion_manager.are_file_operations_locked():
+            _logger.warning("Folder creation rejected - file operations locked during ingestion")
+            return JSONResponse({
+                "success": False,
+                "message": "Cannot create folders while ingestion is running. Please wait for ingestion to complete."
+            }, status_code=423)
+
+        # Create directory (parents=True allows nested creation)
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        _logger.info(f"Folder created successfully: {folder_path}")
+        return JSONResponse({
+            "success": True,
+            "message": f"Folder created: {folder_path}",
+            "path": folder_path
+        })
+
+    except Exception as exc:
+        log_exception(_logger, exc, "create_folder endpoint")
+        return JSONResponse({
+            "success": False,
+            "message": "Folder creation failed",
+            "error": str(exc)
+        }, status_code=500)
+
+
+@require_auth
+async def delete_folder_endpoint(request):
+    """
+    DELETE /api/folders/{path:path} - Delete a folder.
+
+    Protected endpoint (requires authentication).
+
+    Query parameters:
+        - recursive: "true" or "false" (default: false)
+
+    Returns: {
+        "success": bool,
+        "message": str
+    }
+    """
+    try:
+        folder_path = request.path_params.get("path", "")
+        recursive = request.query_params.get("recursive", "false").lower() == "true"
+
+        if not folder_path:
+            return JSONResponse({
+                "success": False,
+                "message": "Folder path required"
+            }, status_code=400)
+
+        _logger.info(f"Delete folder request from user: {request.state.username}")
+        _logger.info(f"Deleting folder: {folder_path} (recursive={recursive})")
+
+        # Validate path safety
+        target_path = DOCS_ROOT / folder_path
+        safety_check = _validate_path_safety(target_path, "delete folder")
+        if safety_check:
+            return safety_check
+
+        # Check if ingestion is running
+        if ingestion_manager.are_file_operations_locked():
+            _logger.warning("Folder deletion rejected - file operations locked during ingestion")
+            return JSONResponse({
+                "success": False,
+                "message": "Cannot delete folders while ingestion is running. Please wait for ingestion to complete."
+            }, status_code=423)
+
+        # Check if folder exists
+        if not target_path.exists():
+            _logger.warning(f"Folder not found: {folder_path}")
+            return JSONResponse({
+                "success": False,
+                "message": f"Folder not found: {folder_path}"
+            }, status_code=404)
+
+        # Check if it's actually a directory
+        if not target_path.is_dir():
+            _logger.warning(f"Path is not a folder: {folder_path}")
+            return JSONResponse({
+                "success": False,
+                "message": f"Path is not a folder: {folder_path}"
+            }, status_code=400)
+
+        # Check if folder is empty (if not recursive)
+        if not recursive and any(target_path.iterdir()):
+            _logger.warning(f"Folder not empty: {folder_path}")
+            return JSONResponse({
+                "success": False,
+                "message": f"Folder not empty. Use recursive=true to delete all contents."
+            }, status_code=400)
+
+        # Delete folder
+        if recursive:
+            import shutil
+            shutil.rmtree(target_path)
+        else:
+            target_path.rmdir()
+
+        _logger.info(f"Folder deleted successfully: {folder_path}")
+        return JSONResponse({
+            "success": True,
+            "message": f"Folder deleted: {folder_path}"
+        })
+
+    except Exception as exc:
+        log_exception(_logger, exc, "delete_folder endpoint")
+        return JSONResponse({
+            "success": False,
+            "message": "Folder deletion failed",
+            "error": str(exc)
+        }, status_code=500)
+
+
+@require_auth
+async def get_folder_tree_endpoint(request):
+    """
+    GET /api/folders/tree - Get folder tree structure with file metadata.
+
+    Protected endpoint (requires authentication).
+
+    Returns: {
+        "success": bool,
+        "tree": {
+            "name": "root",
+            "path": "",
+            "type": "folder",
+            "children": [...]
+        }
+    }
+    """
+    try:
+        _logger.info(f"Get folder tree request from user: {request.state.username}")
+
+        # Get document metadata from listing
+        result = _list_documents_internal()
+        documents_by_path = {doc["filename"]: doc for doc in result.documents}
+
+        # Build tree structure
+        tree = {
+            "name": "root",
+            "path": "",
+            "type": "folder",
+            "children": []
+        }
+
+        # Helper function to build nested tree
+        def add_to_tree(path_parts, full_path, doc_info, node):
+            if not path_parts:
+                return
+
+            current = path_parts[0]
+            remaining = path_parts[1:]
+
+            # Find or create child node
+            child = None
+            for c in node["children"]:
+                if c["name"] == current:
+                    child = c
+                    break
+
+            if not child:
+                is_file = len(remaining) == 0
+                child = {
+                    "name": current,
+                    "path": full_path if is_file else "/".join(path_parts[:len(path_parts) - len(remaining)]),
+                    "type": "file" if is_file else "folder",
+                }
+
+                if is_file and doc_info:
+                    # Add file metadata
+                    child.update({
+                        "size": doc_info.get("file_size", 0),
+                        "status": doc_info.get("status", "not_indexed"),
+                        "pages": doc_info.get("total_pages", 0),
+                        "chunks": doc_info.get("chunks", 0),
+                        "file_type": doc_info.get("file_type", ""),
+                    })
+                elif not is_file:
+                    # Initialize children array for folders
+                    child["children"] = []
+
+                node["children"].append(child)
+
+            # Recurse for remaining parts
+            if remaining:
+                add_to_tree(remaining, full_path, doc_info, child)
+
+        # Add all documents to tree
+        for doc_path, doc_info in documents_by_path.items():
+            parts = doc_path.split("/")
+            add_to_tree(parts, doc_path, doc_info, tree)
+
+        # Also include empty folders (scan filesystem)
+        for item in DOCS_ROOT.rglob("*"):
+            if item.is_dir():
+                try:
+                    relative = item.relative_to(DOCS_ROOT)
+                    parts = str(relative).replace("\\", "/").split("/")
+                    add_to_tree(parts, str(relative).replace("\\", "/"), None, tree)
+                except ValueError:
+                    continue
+
+        # Sort children (folders first, then alphabetically)
+        def sort_tree(node):
+            if "children" in node:
+                node["children"].sort(key=lambda x: (x["type"] == "file", x["name"].lower()))
+                for child in node["children"]:
+                    sort_tree(child)
+
+        sort_tree(tree)
+
+        _logger.info(f"Folder tree generated successfully")
+        return JSONResponse({
+            "success": True,
+            "tree": tree
+        })
+
+    except Exception as exc:
+        log_exception(_logger, exc, "get_folder_tree endpoint")
+        return JSONResponse({
+            "success": False,
+            "message": "Failed to get folder tree",
             "error": str(exc)
         }, status_code=500)
 
@@ -1686,6 +1975,11 @@ def main():
                 Route("/api/documents/{filename:path}", endpoint=delete_document_endpoint, methods=["DELETE"]),
                 Route("/api/search", endpoint=search_endpoint, methods=["POST"]),
 
+                # Folder management endpoints
+                Route("/api/folders", endpoint=create_folder_endpoint, methods=["POST"]),
+                Route("/api/folders/tree", endpoint=get_folder_tree_endpoint, methods=["GET"]),
+                Route("/api/folders/{path:path}", endpoint=delete_folder_endpoint, methods=["DELETE"]),
+
                 # Ingestion control endpoints
                 Route("/api/ingestion/start", endpoint=start_ingestion_endpoint, methods=["POST"]),
                 Route("/api/ingestion/status", endpoint=get_ingestion_status_endpoint, methods=["GET"]),
@@ -1716,6 +2010,9 @@ def main():
         _logger.info("  - POST   /api/documents/upload (upload document)")
         _logger.info("  - DELETE /api/documents/{filename} (delete document)")
         _logger.info("  - POST   /api/search (search documents)")
+        _logger.info("  - POST   /api/folders (create folder)")
+        _logger.info("  - GET    /api/folders/tree (get folder tree)")
+        _logger.info("  - DELETE /api/folders/{path} (delete folder)")
         _logger.info("  - POST   /api/ingestion/start (start ingestion)")
         _logger.info("  - GET    /api/ingestion/status (get ingestion status)")
         _logger.info("  - POST   /api/ingestion/stop (stop ingestion)")

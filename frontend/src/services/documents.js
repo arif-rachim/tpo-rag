@@ -17,12 +17,18 @@ export const listDocuments = async () => {
 /**
  * Upload a new document
  * @param {File} file - The file to upload
+ * @param {string} folder - Target folder path (optional)
  * @param {Function} onProgress - Progress callback (optional)
  * @returns {Promise<Object>} Upload response
  */
-export const uploadDocument = async (file, onProgress = null) => {
+export const uploadDocument = async (file, folder = '', onProgress = null) => {
   const formData = new FormData();
   formData.append('file', file);
+
+  // Add folder parameter if specified
+  if (folder) {
+    formData.append('folder', folder);
+  }
 
   const config = {
     headers: {
