@@ -61,7 +61,9 @@
       "Bash(del test_sync.py)",
       "Bash(cmd /c \"del test_sync.py\")",
       "Bash(cmd /c \"del test_stale_collection_fix.py\")",
-      "Bash(cmd /c \"del test_metadata_fix.py\")"
+      "Bash(cmd /c \"del test_metadata_fix.py\")",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

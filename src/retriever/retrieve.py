@@ -1640,25 +1640,32 @@ async def get_folder_tree_endpoint(request):
         }
 
         # Helper function to build nested tree
-        def add_to_tree(path_parts, full_path, doc_info, node):
+        def add_to_tree(path_parts, full_path, doc_info, node, current_path=""):
             if not path_parts:
                 return
 
             current = path_parts[0]
             remaining = path_parts[1:]
 
+            # Build the current node's path
+            node_path = f"{current_path}/{current}" if current_path else current
+
             # Find or create child node
             child = None
-            for c in node["children"]:
+            for c in node.get("children", []):
                 if c["name"] == current:
                     child = c
                     break
 
             if not child:
-                is_file = len(remaining) == 0
+                # Determine if this is a file or folder
+                # It's a file only if: no remaining parts AND has doc_info (actual document)
+                # It's a folder if: has remaining parts OR doc_info is None (empty folder)
+                is_file = len(remaining) == 0 and doc_info is not None
+
                 child = {
                     "name": current,
-                    "path": full_path if is_file else "/".join(path_parts[:len(path_parts) - len(remaining)]),
+                    "path": node_path,
                     "type": "file" if is_file else "folder",
                 }
 
@@ -1671,15 +1678,27 @@ async def get_folder_tree_endpoint(request):
                         "chunks": doc_info.get("chunks", 0),
                         "file_type": doc_info.get("file_type", ""),
                     })
-                elif not is_file:
+                else:
                     # Initialize children array for folders
-                    child["children"] = []
+                    if "children" not in child:
+                        child["children"] = []
 
                 node["children"].append(child)
+            else:
+                # Existing node - ensure it's treated as a folder if we need to recurse
+                if remaining and child.get("type") == "file":
+                    # Convert file to folder (edge case)
+                    child["type"] = "folder"
+                    child["children"] = []
 
-            # Recurse for remaining parts
+            # Recurse for remaining parts (only if it's a folder)
             if remaining:
-                add_to_tree(remaining, full_path, doc_info, child)
+                # Ensure child is a folder with children array
+                if "children" not in child:
+                    child["children"] = []
+
+                # Recurse with updated path
+                add_to_tree(remaining, full_path, doc_info, child, node_path)
 
         # Add all documents to tree
         for doc_path, doc_info in documents_by_path.items():
