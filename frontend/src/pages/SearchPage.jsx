@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { searchDocuments } from '../services/search';
+import { MdSearch, MdDescription } from 'react-icons/md';
+import { Button } from '../components/Button';
+import { Card } from '../components/Card';
 import Navigation from '../components/Navigation';
-import SearchBar from '../components/SearchBar';
-import SearchResults from '../components/SearchResults';
 import DocumentViewer from '../components/DocumentViewer';
 
 export default function SearchPage() {
@@ -15,8 +16,10 @@ export default function SearchPage() {
   const [viewingDocument, setViewingDocument] = useState(null);
 
   // Handle search
-  const handleSearch = async (searchQuery) => {
-    setQuery(searchQuery);
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+
     setLoading(true);
     setResults(null);
     setSearchTime(null);
@@ -24,12 +27,12 @@ export default function SearchPage() {
     const startTime = performance.now();
 
     try {
-      const result = await searchDocuments(searchQuery, {
+      const result = await searchDocuments(query, {
         maxResults: 20,
       });
 
       const endTime = performance.now();
-      const duration = (endTime - startTime) / 1000; // Convert to seconds
+      const duration = (endTime - startTime) / 1000;
 
       if (result.success) {
         setResults(result.results || []);
@@ -70,59 +73,138 @@ export default function SearchPage() {
     setViewingDocument(doc);
   };
 
+  // Highlight matching words in text
+  const highlightText = (text, query) => {
+    if (!query || !text) return text;
+
+    // Split query into words and escape special regex characters
+    const words = query
+      .trim()
+      .split(/\s+/)
+      .filter(word => word.length > 0)
+      .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+    if (words.length === 0) return text;
+
+    // Create regex pattern that matches any of the query words (case-insensitive)
+    const pattern = new RegExp(`(${words.join('|')})`, 'gi');
+
+    // Split text by matches and wrap matches in spans
+    const parts = text.split(pattern);
+
+    return (
+      <>
+        {parts.map((part, idx) => {
+          // Check if this part matches any query word
+          const isMatch = words.some(word =>
+            new RegExp(`^${word}$`, 'i').test(part)
+          );
+
+          if (isMatch) {
+            return (
+              <span
+                key={idx}
+                className="font-semibold px-1 rounded"
+                style={{ backgroundColor: '#1A73E8', color: '#FFFFFF' }}
+              >
+                {part}
+              </span>
+            );
+          }
+          return <span key={idx}>{part}</span>;
+        })}
+      </>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Navigation */}
+    <div className="min-h-screen bg-white">
       <Navigation />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Search Section */}
-        <div className={`${results === null ? 'py-24' : 'py-12'} transition-all duration-300`}>
-          {/* Logo / Title (large when no results) */}
-          {results === null && (
-            <div className="text-center mb-8">
-              <h1 className="text-5xl font-bold text-gray-900 mb-2">
-                Search Documents
-              </h1>
-              <p className="text-lg text-gray-600">
-                Find information across all your indexed documents
-              </p>
+      <main className="max-w-3xl mx-auto px-6">
+        {/* Search Box */}
+        <div className="py-6 border-b border-google-gray-200">
+          <form onSubmit={handleSearch}>
+            <div className="relative">
+              <MdSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-google-gray-500" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search documents..."
+                disabled={loading}
+                className="w-full pl-12 pr-4 py-3 text-base border border-google-gray-300 rounded-full hover:shadow-md focus:outline-none focus:shadow-md disabled:opacity-50 transition-shadow"
+              />
             </div>
-          )}
-
-          {/* Search Bar */}
-          <SearchBar
-            onSearch={handleSearch}
-            loading={loading}
-            initialQuery={query}
-          />
+          </form>
         </div>
 
-        {/* Search Results */}
+        {/* Search Stats */}
         {results !== null && !loading && (
-          <div className="pb-12">
-            <SearchResults
-              results={results}
-              query={query}
-              searchTime={searchTime}
-              onViewDocument={handleViewDocument}
-            />
+          <div className="py-3 text-sm text-google-gray-700">
+            About {results.length} results
+            {searchTime && <span className="text-google-gray-500"> ({searchTime.toFixed(2)} seconds)</span>}
           </div>
         )}
 
         {/* Loading State */}
         {loading && (
-          <div className="max-w-3xl mx-auto mt-8">
-            <div className="animate-pulse space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
-                  <div className="h-3 bg-gray-200 rounded w-full mb-2"></div>
-                  <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+          <div className="py-8 space-y-8">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-3 bg-google-gray-200 rounded w-1/3 mb-2"></div>
+                <div className="h-5 bg-google-gray-200 rounded w-2/3 mb-3"></div>
+                <div className="h-4 bg-google-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-google-gray-200 rounded w-5/6"></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Results - Google Style */}
+        {results !== null && results.length > 0 && !loading && (
+          <div className="py-4">
+            {results.map((result, idx) => (
+              <div key={idx} className="mb-8">
+                {/* Breadcrumb */}
+                <div className="flex items-center gap-2 mb-1">
+                  <MdDescription className="w-4 h-4 text-google-gray-500" />
+                  <div className="text-sm text-google-gray-700">
+                    {result.metadata?.source_file || result.filename} › Page {result.metadata?.page_num || result.page}
+                  </div>
+                  {result.score !== undefined && (
+                    <span className="ml-auto text-xs font-medium px-2 py-1 bg-google-gray-100 text-google-gray-700 rounded">
+                      {(result.score * 100).toFixed(1)}% match
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
+
+                {/* Title */}
+                <h3
+                  onClick={() => handleViewDocument(result)}
+                  className="text-xl text-google-blue hover:underline cursor-pointer mb-1"
+                >
+                  {result.metadata?.source_file || result.filename}
+                </h3>
+
+                {/* Snippet */}
+                <p className="text-sm text-google-gray-700 leading-relaxed">
+                  {highlightText(result.document || result.text, query)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* No Results */}
+        {results !== null && results.length === 0 && !loading && (
+          <div className="py-12 text-center">
+            <p className="text-google-gray-700 text-base mb-2">
+              Your search - <span className="font-bold">{query}</span> - did not match any documents.
+            </p>
+            <p className="text-sm text-google-gray-500">
+              Try different keywords
+            </p>
           </div>
         )}
       </main>

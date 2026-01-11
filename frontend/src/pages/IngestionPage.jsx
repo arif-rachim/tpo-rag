@@ -6,8 +6,10 @@ import {
   stopIngestion,
   getRecentLogs,
 } from '../services/ingestion';
+import { MdPlayArrow, MdStop } from 'react-icons/md';
+import { Button } from '../components/Button';
+import { Card } from '../components/Card';
 import Navigation from '../components/Navigation';
-import IngestionPanel from '../components/IngestionPanel';
 import LogViewer from '../components/LogViewer';
 
 const POLL_INTERVAL = 2000; // 2 seconds
@@ -159,29 +161,65 @@ export default function IngestionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
+    <div className="h-screen bg-google-gray-50 flex flex-col overflow-hidden">
       <Navigation />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Document Ingestion</h2>
-          <p className="text-sm text-gray-600 mt-1">Re-index documents and monitor ingestion progress</p>
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-12 flex flex-col overflow-hidden w-full">
+        {/* Status Cards */}
+        <div className="grid grid-cols-3 gap-6 mb-8 flex-shrink-0">
+          <Card>
+            <div className="text-sm font-medium text-google-gray-500 mb-1">Status</div>
+            <div className="text-2xl font-medium text-google-gray-900 capitalize">
+              {status?.status || 'Idle'}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="text-sm font-medium text-google-gray-500 mb-1">Processed</div>
+            <div className="text-2xl font-medium text-google-gray-900">
+              {status?.processed || 0}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="text-sm font-medium text-google-gray-500 mb-1">Failed</div>
+            <div className="text-2xl font-medium text-google-gray-900">
+              {status?.failed || 0}
+            </div>
+          </Card>
         </div>
 
-        <div className="space-y-6">
-          {/* Ingestion Control Panel */}
-          <IngestionPanel
-            status={status}
-            onStart={handleStart}
-            onStop={handleStop}
-            starting={starting}
-            stopping={stopping}
-          />
+        {/* Controls */}
+        <Card className="mb-6 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-medium text-google-gray-900">
+              Ingestion Control
+            </h2>
 
-          {/* Log Viewer */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="primary"
+                icon={MdPlayArrow}
+                onClick={handleStart}
+                disabled={status?.status === 'running' || starting}
+              >
+                {starting ? 'Starting...' : 'Start'}
+              </Button>
+
+              <Button
+                variant="danger"
+                icon={MdStop}
+                onClick={handleStop}
+                disabled={status?.status !== 'running' || stopping}
+              >
+                {stopping ? 'Stopping...' : 'Stop'}
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        {/* Log Viewer */}
+        <div className="flex-1 overflow-hidden">
           <LogViewer logs={logs} autoScroll={status?.status === 'running'} />
         </div>
       </main>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatLogLine } from '../services/ingestion';
+import { Card } from './Card';
 
 export default function LogViewer({ logs, autoScroll = true }) {
   const logContainerRef = useRef(null);
@@ -42,70 +43,43 @@ export default function LogViewer({ logs, autoScroll = true }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow">
+    <Card className="h-full flex flex-col p-0 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-        <div className="flex items-center space-x-2">
-          <h3 className="text-sm font-semibold text-gray-700">Ingestion Logs</h3>
-          <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">
-            {logs.length} lines
-          </span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={toggleAutoScroll}
-            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              isAutoScroll
-                ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-            }`}
-          >
-            {isAutoScroll ? '⏸ Pause' : '▶ Resume'} Auto-scroll
-          </button>
-          {!isAutoScroll && (
-            <button
-              onClick={scrollToBottom}
-              className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200 rounded hover:bg-gray-200 transition-colors"
-            >
-              ↓ Jump to Bottom
-            </button>
-          )}
-        </div>
+      <div className="px-6 py-4 border-b border-google-gray-200 flex-shrink-0">
+        <h3 className="text-lg font-medium text-google-gray-900">Logs</h3>
       </div>
 
-      {/* Terminal Log Display */}
+      {/* Log Area */}
       <div
         ref={logContainerRef}
         onScroll={handleScroll}
-        className="bg-gray-900 rounded-b-lg p-4 font-mono text-sm h-[500px] overflow-y-auto"
+        className="flex-1 overflow-y-auto bg-google-gray-900 p-4 font-mono text-sm"
         style={{
           scrollBehavior: isAutoScroll ? 'smooth' : 'auto',
         }}
       >
         {logs.length === 0 ? (
-          <div className="text-gray-500 text-center py-8">
-            No logs available. Start ingestion to see logs.
-          </div>
+          <p className="text-google-gray-500 text-center py-8">
+            No logs yet...
+          </p>
         ) : (
-          <div className="space-y-0.5">
-            {logs.map((line, index) => {
-              const formatted = formatLogLine(line);
-              return (
-                <div key={index} className={`${formatted.color} leading-relaxed`}>
-                  {formatted.text || ' '}
-                </div>
-              );
-            })}
-          </div>
+          logs.map((line, idx) => {
+            const formatted = formatLogLine(line);
+            return (
+              <div key={idx} className={`${formatted.color} mb-1 leading-relaxed`}>
+                {formatted.text || ' '}
+              </div>
+            );
+          })
         )}
       </div>
 
       {/* Scroll indicator */}
       {isUserScrolling && (
-        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-full shadow-lg">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 px-3 py-1.5 bg-google-blue text-white text-xs rounded-full shadow-lg">
           Auto-scroll paused • Scroll to bottom to resume
         </div>
       )}
-    </div>
+    </Card>
   );
 }

@@ -11,10 +11,13 @@ import NotFoundPage from './pages/NotFoundPage';
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename="/app">
         <Routes>
           {/* Redirect root to documents */}
           <Route path="/" element={<Navigate to="/documents" replace />} />
+
+          {/* Redirect index.html to documents */}
+          <Route path="/index.html" element={<Navigate to="/documents" replace />} />
 
           {/* Login page */}
           <Route path="/login" element={<LoginPage />} />

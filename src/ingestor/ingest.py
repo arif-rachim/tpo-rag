@@ -220,6 +220,12 @@ def extract_docx(file_path: Path) -> List[Dict[str, Any]]:
     page_counter = 1
     buffer = ""
 
+    # Create a mapping of table elements to table objects for lookup
+    table_map = {}
+    for table in doc.tables:
+        table_map[id(table._element)] = table
+
+    # Process elements in order to preserve document structure
     for element in doc.element.body.iterchildren():
         # Paragraphs
         if element.tag.endswith("}p"):
@@ -227,33 +233,23 @@ def extract_docx(file_path: Path) -> List[Dict[str, Any]]:
             buffer += txt + "\n"
         # Tables
         elif element.tag.endswith("}tbl"):
-            rows = []
-            for row in element.xpath(
-                    ".//w:tr",
-                    namespaces={
-                        "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-                    },
-            ):
-                cells = [
-                    c.text or ""
-                    for c in row.xpath(
-                        ".//w:tc",
-                        namespaces={
-                            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-                        },
-                    )
-                ]
-                rows.append(" | ".join(cells))
-            table_txt = "\n".join(rows)
+            # Find the corresponding table object
+            table_obj = table_map.get(id(element))
+            if table_obj:
+                rows = []
+                for row in table_obj.rows:
+                    cells = [cell.text or "" for cell in row.cells]
+                    rows.append(" | ".join(cells))
+                table_txt = "\n".join(rows)
 
-            if buffer:
-                _add_text_page(out, page_counter, buffer)
-                buffer = ""
+                if buffer:
+                    _add_text_page(out, page_counter, buffer)
+                    buffer = ""
+                    page_counter += 1
+                out.append(
+                    {"page": page_counter, "text": f"[TABLE]\n{table_txt}", "lang": "table"}
+                )
                 page_counter += 1
-            out.append(
-                {"page": page_counter, "text": f"[TABLE]\n{table_txt}", "lang": "table"}
-            )
-            page_counter += 1
 
     if buffer:
         _add_text_page(out, page_counter, buffer)

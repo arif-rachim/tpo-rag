@@ -70,6 +70,7 @@ EMBED_MODEL = Path(config.PATH_MODEL_EMBEDDER)
 RERANK_MODEL = Path(config.PATH_MODEL_RERANKER)
 DOCS_ROOT = Path(config.PATH_DOCUMENTS)  # folder that holds the original files
 PUBLIC_ROOT = Path(__file__).parent.parent.parent / "public"
+FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 # MIME type mappings for file serving
 _MIME_TYPES = {
@@ -597,9 +598,44 @@ def search_documents(query: str, max_results: int = 10) -> SearchDocumentsResult
         return _search_documents_internal(query, max_results)
 
 
+def _get_file_extension(filename: str) -> str:
+    """Extract file extension from filename."""
+    return Path(filename).suffix.lstrip('.').lower()
+
+
+def _scan_documents_from_filesystem() -> List[Dict[str, Any]]:
+    """Scan DOCS_ROOT recursively for all supported document files."""
+    files = []
+
+    # Scan for each allowed file type
+    for ext in config.ALLOWED_FILE_TYPES:
+        # Ensure extension starts with dot
+        ext_pattern = ext if ext.startswith('.') else f'.{ext}'
+
+        # Find all files with this extension (recursively)
+        for file_path in DOCS_ROOT.rglob(f'*{ext_pattern}'):
+            if file_path.is_file():
+                try:
+                    relative_path = file_path.relative_to(DOCS_ROOT)
+                    stat = file_path.stat()
+
+                    files.append({
+                        'filename': str(relative_path).replace('\\', '/'),  # Normalize path separators
+                        'absolute_path': str(file_path),
+                        'file_size': stat.st_size,
+                        'modified_at': stat.st_mtime,
+                    })
+                except (OSError, ValueError) as e:
+                    _logger.warning(f"Error accessing file {file_path}: {e}")
+                    continue
+
+    _logger.debug(f"Scanned filesystem and found {len(files)} documents")
+    return files
+
+
 def _list_documents_internal() -> ListDocumentsResults:
     """
-    Internal function: List all indexed documents with metadata.
+    Internal function: List all documents from filesystem, enriched with ChromaDB indexing data.
 
     This is the core implementation used by both the MCP tool and REST endpoint.
 
@@ -609,95 +645,132 @@ def _list_documents_internal() -> ListDocumentsResults:
         List of documents with summary statistics
     """
     try:
-        # Load resources
+        # Step 1: Scan filesystem for all documents
+        _logger.debug("Scanning filesystem for documents...")
+        filesystem_docs = _scan_documents_from_filesystem()
+
+        # Step 2: Get indexed documents from ChromaDB
         _logger.debug("Loading collection for document listing...")
-        _, _, collection, _, _ = _load_resources()
-
-        # Get all data from collection
-        _logger.debug("Fetching all documents from collection...")
         try:
-            data = collection.get()
-        except chromadb.errors.NotFoundError as nf_exc:
-            # Collection was deleted and recreated (e.g., during ingestion)
-            # Invalidate cache and retry with fresh collection
-            _logger.warning(f"Collection not found (stale cache) - reloading: {nf_exc}")
-            _invalidate_cache(clear_collection=True, clear_bm25=True)
-            _, _, collection, _, _ = _load_resources(force_reload_collection=True, force_reload_bm25=True)
-            data = collection.get()
+            _, _, collection, _, _ = _load_resources()
+            _logger.debug("Fetching all documents from collection...")
+            try:
+                chroma_data = collection.get()
+            except chromadb.errors.NotFoundError as nf_exc:
+                # Collection was deleted and recreated (e.g., during ingestion)
+                # Invalidate cache and retry with fresh collection
+                _logger.warning(f"Collection not found (stale cache) - reloading: {nf_exc}")
+                _invalidate_cache(clear_collection=True, clear_bm25=True)
+                _, _, collection, _, _ = _load_resources(force_reload_collection=True, force_reload_bm25=True)
+                chroma_data = collection.get()
+        except Exception as e:
+            _logger.warning(f"Could not load ChromaDB collection: {e}")
+            chroma_data = {"metadatas": []}
 
-        if not data or not data["metadatas"]:
-            _logger.warning("Collection is empty - no documents to list")
-            return ListDocumentsResults()
+        # Step 3: Build index of ChromaDB metadata by filename
+        indexed_metadata: Dict[str, Dict[str, Any]] = {}
+        if chroma_data and chroma_data.get("metadatas"):
+            total_items = len(chroma_data["metadatas"])
+            _logger.info(f"Processing {total_items} metadata items from ChromaDB...")
 
-        total_items = len(data["metadatas"])
-        _logger.info(f"Processing {total_items} metadata items...")
+            for meta in chroma_data["metadatas"]:
+                filename = meta.get("filename", "unknown")
+                if filename not in indexed_metadata:
+                    indexed_metadata[filename] = {
+                        "chunks": 0,
+                        "pages": set(),
+                        "sheet_titles": set(),
+                        "meta": {
+                            "total_pages": meta.get("total_pages", 0),
+                            "lang": meta.get("lang", "unknown"),
+                            "created_at": meta.get("created_at"),
+                            "file_type": meta.get("file_type"),
+                        }
+                    }
 
-        # aggregate per file
-        agg: Dict[str, Dict[str, Any]] = defaultdict(
-            lambda: {
-                "chunks": 0,
-                "pages": set(),
-                "meta": {},
-                "sheet_titles": set(),
-                "file_type": None
+                indexed_metadata[filename]["chunks"] += 1
+                indexed_metadata[filename]["pages"].add(meta.get("page"))
+
+                # Collect sheet titles (for Excel files)
+                if st := meta.get("sheet_title"):
+                    indexed_metadata[filename]["sheet_titles"].add(st)
+
+            _logger.debug(f"Found {len(indexed_metadata)} unique documents in ChromaDB")
+            _logger.info(f"ChromaDB filenames: {sorted(indexed_metadata.keys())}")
+
+        # Step 4: Combine filesystem + ChromaDB data
+        filesystem_filenames = [fs_doc['filename'] for fs_doc in filesystem_docs]
+        _logger.info(f"Filesystem filenames: {sorted(filesystem_filenames)}")
+
+        documents = []
+        for fs_doc in filesystem_docs:
+            filename = fs_doc['filename']
+            chroma_meta = indexed_metadata.get(filename, {})
+
+            # Debug: Log mismatch
+            if filename not in indexed_metadata:
+                _logger.warning(f"File on disk but NOT in ChromaDB: {filename}")
+
+            # Determine if this file is indexed
+            is_indexed = filename in indexed_metadata
+
+            doc = {
+                "filename": filename,
+                "file_type": chroma_meta.get("meta", {}).get("file_type") or _get_file_extension(filename),
+                "file_size": fs_doc['file_size'],
+                "modified_at": fs_doc['modified_at'],
+                "status": "indexed" if is_indexed else "not_indexed",
             }
-        )
 
-        for meta in data["metadatas"]:
-            fn = meta.get("filename", "unknown")
-            cur = agg[fn]
-            cur["chunks"] += 1
-            cur["pages"].add(meta.get("page"))  # page may be int or str – set works fine
-            if not cur["meta"]:
-                cur["meta"] = {
-                    "filename": fn,
-                    "total_pages": meta.get("total_pages", 0),
-                    "lang": meta.get("lang", "unknown"),
-                    "created_at": meta.get("created_at"),
-                    "modified_at": meta.get("modified_at"),
-                    "file_size": meta.get("file_size"),
-                }
-            # collect sheet titles and file type during first pass
-            if st := meta.get("sheet_title"):
-                cur["sheet_titles"].add(st)
-            if not cur["file_type"] and (ft := meta.get("file_type")):
-                cur["file_type"] = ft
+            # Add indexed-specific metadata if available
+            if is_indexed:
+                doc.update({
+                    "total_pages": chroma_meta.get("meta", {}).get("total_pages", 0),
+                    "indexed_pages": len(chroma_meta.get("pages", set())),
+                    "chunks": chroma_meta.get("chunks", 0),
+                    "language": chroma_meta.get("meta", {}).get("lang"),
+                    "created_at": chroma_meta.get("meta", {}).get("created_at"),
+                    "sheet_titles": sorted(chroma_meta.get("sheet_titles", set())),
+                })
+            else:
+                # For non-indexed files, provide sensible defaults
+                doc.update({
+                    "total_pages": 0,
+                    "indexed_pages": 0,
+                    "chunks": 0,
+                    "language": None,
+                    "created_at": None,
+                    "sheet_titles": [],
+                })
 
-        _logger.debug(f"Aggregated into {len(agg)} unique documents")
+            documents.append(doc)
 
-        documents = [
-            {
-                "filename": fn,
-                "total_pages": d["meta"]["total_pages"],
-                "indexed_pages": len(d["pages"]),
-                "chunks": d["chunks"],
-                "language": d["meta"]["lang"],
-                "created_at": d["meta"].get("created_at"),
-                "modified_at": d["meta"].get("modified_at"),
-                "file_size": d["meta"].get("file_size"),
-                # optional sheet info (only present for Excel files)
-                "sheet_titles": sorted(d["sheet_titles"]),
-                # expose the file type if you want to show it in a UI
-                "file_type": d["file_type"],
-            }
-            for fn, d in agg.items()
-        ]
+        # Step 5: Sort by status (indexed first), then by filename
+        documents.sort(key=lambda d: (d["status"] != "indexed", d["filename"]))
+
+        # Step 6: Calculate summary statistics
+        indexed_count = sum(1 for d in documents if d["status"] == "indexed")
+        not_indexed_count = sum(1 for d in documents if d["status"] == "not_indexed")
 
         summary = {
             "total_documents": len(documents),
-            "total_chunks": sum(d["chunks"] for d in documents),
-            "total_pages": sum(d["total_pages"] for d in documents),
+            "indexed_count": indexed_count,
+            "not_indexed_count": not_indexed_count,
+            "total_chunks": sum(d.get("chunks", 0) for d in documents if d["status"] == "indexed"),
+            "total_pages": sum(d.get("total_pages", 0) for d in documents if d["status"] == "indexed"),
         }
 
         _logger.info("=" * 80)
         _logger.info("list_documents succeeded")
-        _logger.info(f"  Documents: {summary['total_documents']}")
+        _logger.info(f"  Total documents: {summary['total_documents']}")
+        _logger.info(f"  Indexed: {summary['indexed_count']}")
+        _logger.info(f"  Not indexed: {summary['not_indexed_count']}")
         _logger.info(f"  Total chunks: {summary['total_chunks']}")
         _logger.info(f"  Total pages: {summary['total_pages']}")
         _logger.info("=" * 80)
 
         return ListDocumentsResults(
-            documents=sorted(documents, key=lambda x: x["filename"]),
+            documents=documents,
             summary=summary
         )
 
@@ -1592,6 +1665,12 @@ def main():
             _logger.warning(f"Static files directory does not exist: {PUBLIC_ROOT}")
         static = StaticFiles(directory=PUBLIC_ROOT, html=True)
 
+        # Static files for the React frontend
+        _logger.info(f"Setting up frontend static files from: {FRONTEND_DIST}")
+        if not FRONTEND_DIST.exists():
+            _logger.warning(f"Frontend dist directory does not exist: {FRONTEND_DIST}")
+        frontend_static = StaticFiles(directory=FRONTEND_DIST, html=True)
+
         # Assemble the final Starlette app
         _logger.info("Assembling Starlette application with routes")
         app = Starlette(
@@ -1618,6 +1697,7 @@ def main():
                 Route("/file/view/{filename:path}", endpoint=serve_file),
 
                 # Static files and MCP
+                Mount("/app", app=frontend_static),
                 Mount("/pdf", app=static),
                 Mount("/", app=_mcp_app),
             ],
