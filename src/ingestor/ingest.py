@@ -46,14 +46,6 @@ from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 from transformers import pipeline, AutoModelForTokenClassification, AutoTokenizer
 
-# BiDi support for Arabic/Hebrew text
-try:
-    from bidi.algorithm import get_display
-    BIDI_AVAILABLE = True
-except ImportError:
-    BIDI_AVAILABLE = False
-    warnings.warn("python-bidi not installed. Arabic/Hebrew text may not display correctly.")
-
 # --------------------------------------------------------------------------- #
 #  Project imports
 # --------------------------------------------------------------------------- #
@@ -155,12 +147,10 @@ def chunk_text(text: str) -> List[str]:
 
 def _add_text_page(out: List[Dict], page_num: int, text: str) -> None:
     """Add a text page to output list."""
-    # Fix BiDi text before adding to output
-    fixed_text = fix_bidi_text(text.strip())
     out.append({
         "page": page_num,
-        "text": fixed_text,
-        "lang": detect_language(fixed_text),
+        "text": text.strip(),
+        "lang": detect_language(text),
     })
 
 
@@ -181,52 +171,6 @@ def fs_timestamp_to_iso(ts: float | None) -> str | None:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
-def fix_bidi_text(text: str) -> str:
-    """
-    Fix bidirectional text (Arabic, Hebrew, etc.) by properly reordering characters.
-
-    This function detects if the text contains RTL (right-to-left) characters
-    and applies the Unicode BiDi algorithm to fix character ordering issues
-    that occur when extracting text from PDFs.
-
-    Args:
-        text: Raw text that may contain RTL characters in wrong order
-
-    Returns:
-        Text with properly ordered characters for display
-    """
-    if not BIDI_AVAILABLE or not text:
-        return text
-
-    # Check if text contains RTL characters (Arabic: 0x0600-0x06FF, Hebrew: 0x0590-0x05FF)
-    has_rtl = any(
-        '\u0590' <= char <= '\u05FF' or  # Hebrew
-        '\u0600' <= char <= '\u06FF' or  # Arabic
-        '\u0750' <= char <= '\u077F' or  # Arabic Supplement
-        '\u08A0' <= char <= '\u08FF'     # Arabic Extended-A
-        for char in text
-    )
-
-    if not has_rtl:
-        return text
-
-    try:
-        # Apply BiDi algorithm line by line to preserve structure
-        lines = text.split('\n')
-        fixed_lines = []
-        for line in lines:
-            if line.strip():
-                # get_display reshapes and reorders the text for proper display
-                fixed_line = get_display(line)
-                fixed_lines.append(fixed_line)
-            else:
-                fixed_lines.append(line)
-        return '\n'.join(fixed_lines)
-    except Exception as e:
-        logger.warning(f"BiDi processing failed: {e}, returning original text")
-        return text
-
-
 # --------------------------------------------------------------------------- #
 #  Extraction functions – one per file type (all return the same schema)
 # --------------------------------------------------------------------------- #
@@ -239,8 +183,6 @@ def extract_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
         for page_num, page in enumerate(doc, 1):
             txt = page.get_text()
             if txt.strip():
-                # Fix BiDi text (Arabic, Hebrew, etc.)
-                txt = fix_bidi_text(txt)
                 out.append(
                     {"page": page_num, "text": txt, "lang": detect_language(txt)}
                 )
@@ -256,8 +198,6 @@ def extract_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
                         ]
                     )
                     if table_txt.strip():
-                        # Fix BiDi text in tables too
-                        table_txt = fix_bidi_text(table_txt)
                         out.append(
                             {
                                 "page": page_num,
@@ -306,8 +246,6 @@ def extract_docx(file_path: Path) -> List[Dict[str, Any]]:
                     _add_text_page(out, page_counter, buffer)
                     buffer = ""
                     page_counter += 1
-                # Fix BiDi text in tables
-                table_txt = fix_bidi_text(table_txt)
                 out.append(
                     {"page": page_counter, "text": f"[TABLE]\n{table_txt}", "lang": "table"}
                 )
@@ -340,8 +278,6 @@ def extract_pptx(file_path: Path) -> List[Dict[str, Any]]:
 
         combined = "\n".join(slide_txt).strip()
         if combined:
-            # Fix BiDi text in slides
-            combined = fix_bidi_text(combined)
             out.append(
                 {"page": idx, "text": combined, "lang": detect_language(combined)}
             )
