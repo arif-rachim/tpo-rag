@@ -1,7 +1,22 @@
-import { MdDescription, MdDelete, MdCheckCircle, MdPending, MdVisibility } from 'react-icons/md';
+import { MdDescription, MdDelete, MdCheckCircle, MdPending, MdVisibility, MdFolder } from 'react-icons/md';
 import { formatFileSize } from '../services/documents';
 
 export default function DocumentList({ documents, summary, loading, onDelete, onView, onRefresh }) {
+  // Helper function to extract folder and basename from filename
+  const getFileInfo = (filename) => {
+    const parts = filename.split('/');
+    if (parts.length > 1) {
+      return {
+        folder: parts.slice(0, -1).join('/'),
+        basename: parts[parts.length - 1]
+      };
+    }
+    return {
+      folder: null,
+      basename: filename
+    };
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-google-sm p-8">
@@ -38,15 +53,25 @@ export default function DocumentList({ documents, summary, loading, onDelete, on
             </tr>
           </thead>
           <tbody className="divide-y divide-google-gray-200">
-            {documents.map((doc) => (
+            {documents.map((doc) => {
+              const fileInfo = getFileInfo(doc.filename);
+              return (
               <tr key={doc.filename} className="hover:bg-google-gray-50 transition-colors">
                 {/* Document */}
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <MdDescription className="w-5 h-5 text-google-blue flex-shrink-0" />
-                    <span className="text-sm font-medium text-google-gray-900 truncate">
-                      {doc.filename}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <MdDescription className="w-5 h-5 text-google-blue flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-google-gray-900 truncate">
+                        {fileInfo.basename}
+                      </div>
+                      {fileInfo.folder && (
+                        <div className="flex items-center gap-1 text-xs text-google-gray-500 mt-0.5">
+                          <MdFolder className="w-3 h-3" />
+                          <span className="truncate">{fileInfo.folder}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
 
@@ -110,7 +135,8 @@ export default function DocumentList({ documents, summary, loading, onDelete, on
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>

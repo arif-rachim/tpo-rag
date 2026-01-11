@@ -410,12 +410,23 @@ def build_bm25(chunks: Sequence[str], metadatas: Sequence[Dict[str, Any]]):
 def extract_and_chunk_file(
         file_path: Path,
         ner: Any = None,
+        input_folder: Path = None,
 ) -> Tuple[str, List[str], List[Dict[str, Any]]] | None:
     """
     Returns (filename, list_of_chunks, list_of_metadatas) or None on failure.
     """
     try:
-        filename = file_path.name
+        # Compute relative path from input folder (or use basename if not provided)
+        if input_folder:
+            try:
+                relative_path = file_path.relative_to(input_folder)
+                filename = str(relative_path).replace('\\', '/')  # Normalize path separators
+            except ValueError:
+                # If file_path is not relative to input_folder, use basename
+                filename = file_path.name
+        else:
+            filename = file_path.name
+
         created_iso = fs_timestamp_to_iso(os.path.getctime(file_path))
         modified_iso = fs_timestamp_to_iso(os.path.getmtime(file_path))
         file_size = file_path.stat().st_size  # Get file size in bytes
@@ -557,7 +568,7 @@ def main() -> None:
             )
         logger.info("NER model loaded successfully")
 
-        worker = partial(extract_and_chunk_file, ner=ner_pipe)
+        worker = partial(extract_and_chunk_file, ner=ner_pipe, input_folder=Path(INPUT_FOLDER))
 
         # --------------------------------------------------------------- #
         #  3️⃣  Parallel extraction / chunking (CPU bound)

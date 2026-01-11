@@ -8,6 +8,22 @@ import Navigation from '../components/Navigation';
 import DocumentViewer from '../components/DocumentViewer';
 
 export default function SearchPage() {
+  // Helper function to extract folder and basename from filename
+  const getFileInfo = (filename) => {
+    if (!filename) return { folder: null, basename: 'Unknown' };
+    const parts = filename.split('/');
+    if (parts.length > 1) {
+      return {
+        folder: parts.slice(0, -1).join('/'),
+        basename: parts[parts.length - 1]
+      };
+    }
+    return {
+      folder: null,
+      basename: filename
+    };
+  };
+
   // State management
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
@@ -164,13 +180,16 @@ export default function SearchPage() {
         {/* Results - Google Style */}
         {results !== null && results.length > 0 && !loading && (
           <div className="py-4">
-            {results.map((result, idx) => (
+            {results.map((result, idx) => {
+              const fileInfo = getFileInfo(result.metadata?.source_file || result.filename);
+              return (
               <div key={idx} className="mb-8">
                 {/* Breadcrumb */}
                 <div className="flex items-center gap-2 mb-1">
                   <MdDescription className="w-4 h-4 text-google-gray-500" />
                   <div className="text-sm text-google-gray-700">
-                    {result.metadata?.source_file || result.filename} › Page {result.metadata?.page_num || result.page}
+                    {fileInfo.folder && <span className="text-google-gray-500">{fileInfo.folder} › </span>}
+                    {fileInfo.basename} › Page {result.metadata?.page_num || result.page}
                   </div>
                   {result.score !== undefined && (
                     <span className="ml-auto text-xs font-medium px-2 py-1 bg-google-gray-100 text-google-gray-700 rounded">
@@ -184,7 +203,7 @@ export default function SearchPage() {
                   onClick={() => handleViewDocument(result)}
                   className="text-xl text-google-blue hover:underline cursor-pointer mb-1"
                 >
-                  {result.metadata?.source_file || result.filename}
+                  {fileInfo.basename}
                 </h3>
 
                 {/* Snippet */}
@@ -192,7 +211,8 @@ export default function SearchPage() {
                   {highlightText(result.document || result.text, query)}
                 </p>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
 
